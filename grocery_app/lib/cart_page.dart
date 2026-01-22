@@ -24,7 +24,7 @@ class _CartPageState extends State<CartPage> {
   // 2. Send Order to Python Backend
   Future<void> placeOrder() async {
     // Using 127.0.0.1 for USB connection (ADB Reverse)
-    final url = Uri.parse('http://192.168.1.7:8000/place_order');
+    final url = Uri.parse('https://vaishnavi-api.onrender.com/place_order');
     
     try {
       final response = await http.post(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart'; // <--- NEW IMPORT
 import 'main.dart'; // Imports the HomeScreen AND the currentUserEmail variable
 
 class LoginPage extends StatefulWidget {
@@ -22,8 +23,8 @@ class _LoginPageState extends State<LoginPage> {
     // Ensure we are hitting the correct endpoint
     final endpoint = isLogin ? "login" : "signup";
     
-    // Using 127.0.0.1 for USB connection (ADB Reverse)
-    final url = Uri.parse('http://192.168.1.7:8000/$endpoint');
+    // Using your Cloud Render URL
+    final url = Uri.parse('https://vaishnavi-api.onrender.com/$endpoint');
 
     print("Attempting to connect to: $url"); // Debug print
 
@@ -46,8 +47,12 @@ class _LoginPageState extends State<LoginPage> {
         
         if (isLogin) {
           if (mounted) {
-             // --- THIS IS THE NEW LINE ---
-             // Save the email to the global variable so Cart/Orders know who you are
+             // --- SAVE TO MEMORY (PERSISTENT LOGIN) ---
+             final prefs = await SharedPreferences.getInstance();
+             await prefs.setBool('isLoggedIn', true);
+             await prefs.setString('userEmail', emailController.text);
+
+             // Update global variable so the rest of the app knows immediately
              currentUserEmail = emailController.text; 
              
              Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomeScreen()));

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'main.dart'; // <--- THIS IMPORT IS CRITICAL. IT LETS US SEE 'currentUserEmail'
 
 class OrdersPage extends StatefulWidget {
   const OrdersPage({super.key});
@@ -20,9 +21,8 @@ class _OrdersPageState extends State<OrdersPage> {
   }
 
   Future<void> fetchOrders() async {
-    // 1. Ask Python for orders
-    // Note: We are still using the test email. Next step: Make this dynamic!
-    final url = Uri.parse('http://192.168.1.7:8000/my_orders?email=test@grocery.com');
+    // URL Updated to Cloud
+    final url = Uri.parse('https://vaishnavi-api.onrender.com/my_orders?email=$currentUserEmail');
     
     try {
       final response = await http.get(url);
@@ -44,7 +44,7 @@ class _OrdersPageState extends State<OrdersPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50], // Light grey background
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
         title: const Text("My Orders", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
@@ -70,7 +70,6 @@ class _OrdersPageState extends State<OrdersPage> {
                   itemBuilder: (context, index) {
                     final order = orders[index];
                     final items = order['items'] as List;
-                    // Format Date (Simple way)
                     final String dateStr = order['created_at'].toString().split('T')[0];
 
                     return Container(
@@ -84,7 +83,6 @@ class _OrdersPageState extends State<OrdersPage> {
                       ),
                       child: Column(
                         children: [
-                          // HEADER: Date & Status
                           Padding(
                             padding: const EdgeInsets.all(15),
                             child: Row(
@@ -106,7 +104,6 @@ class _OrdersPageState extends State<OrdersPage> {
                             ),
                           ),
                           const Divider(height: 1),
-                          // ITEMS LIST (Preview)
                           ListView.builder(
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
@@ -128,7 +125,6 @@ class _OrdersPageState extends State<OrdersPage> {
                             },
                           ),
                           const Divider(height: 1),
-                          // FOOTER: Total Price
                           Padding(
                             padding: const EdgeInsets.all(15),
                             child: Row(

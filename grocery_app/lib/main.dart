@@ -1,22 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart'; // <--- Import this
 import 'login_page.dart';
-import 'cart.dart'; // Shared Cart Memory
+import 'cart.dart'; 
 import 'cart_page.dart';
 import 'orders_page.dart';
 
-// --- GLOBAL VARIABLES ---
-String currentUserEmail = ""; // Stores who is logged in
+String currentUserEmail = "";
 
-void main() {
-  // Clear cart on restart to remove any broken/old items
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized(); // Required for async main
+  
+  // Check Memory before app starts
+  final prefs = await SharedPreferences.getInstance();
+  final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+  
+  if(isLoggedIn) {
+    currentUserEmail = prefs.getString('userEmail') ?? "";
+  }
+
   globalCart.clear(); 
-  runApp(const GroceryApp());
+  
+  // Pass the login state to the app
+  runApp(GroceryApp(startHome: isLoggedIn));
 }
 
 class GroceryApp extends StatelessWidget {
-  const GroceryApp({super.key});
+  final bool startHome; // Receive the decision
+  const GroceryApp({super.key, required this.startHome});
 
   @override
   Widget build(BuildContext context) {
@@ -28,11 +40,13 @@ class GroceryApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.green, primary: Colors.green),
         useMaterial3: true,
       ),
-      home: const LoginPage(),
+      // Decide which page to show first!
+      home: startHome ? const HomeScreen() : const LoginPage(),
     );
   }
 }
 
+// ... Keep HomeScreen and the rest of the file the same ...
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -52,7 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> fetchProducts() async {
     // Using 127.0.0.1 for USB connection
-    final url = Uri.parse('http://192.168.1.7:8000/products'); 
+    final url = Uri.parse('https://vaishnavi-api.onrender.com/products'); 
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -82,6 +96,15 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         title: const Text("Vaishnav's Market", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         actions: [
+          // LOGOUT BUTTON
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: () async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.clear(); // Wipe memory
+              Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginPage()));
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.history, color: Colors.white),
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const OrdersPage())),
