@@ -130,13 +130,29 @@ def get_profile(email: str):
         return {"address": "", "phone": ""}
     except Exception as e:
         return {"address": "", "phone": ""}
-# --- 9. ADMIN SYSTEM ---
+# --- 9. ADMIN SYSTEM (SMARTER VERSION) ---
 @app.get("/admin/all_orders")
 def get_all_orders():
     try:
-        # Fetch all orders, newest first
-        response = supabase.table("orders").select("*").order("created_at", desc=True).execute()
-        return response.data
+        # 1. Get all orders
+        orders_response = supabase.table("orders").select("*").order("created_at", desc=True).execute()
+        orders = orders_response.data
+        
+        # 2. For each order, find the user's address & phone
+        for order in orders:
+            user_email = order['user_email']
+            # Search user table
+            user_response = supabase.table("users").select("address, phone").eq("email", user_email).execute()
+            
+            if user_response.data:
+                # Add address/phone to the order data
+                order['address'] = user_response.data[0]['address']
+                order['phone'] = user_response.data[0]['phone']
+            else:
+                order['address'] = "Not Found"
+                order['phone'] = "Not Found"
+                
+        return orders
     except Exception as e:
         print(f"Admin Error: {e}")
         return []
