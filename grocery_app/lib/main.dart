@@ -6,7 +6,7 @@ import 'package:carousel_slider/carousel_slider.dart';
 import 'login_page.dart';
 import 'cart.dart'; 
 import 'cart_page.dart';
-import 'orders_page.dart';
+import 'orders_page.dart'; // <--- Make sure this is imported
 
 String currentUserEmail = "";
 
@@ -45,7 +45,7 @@ class GroceryApp extends StatelessWidget {
   }
 }
 
-// --- UPDATED HOME SCREEN WITH CATEGORIES ---
+// --- UPDATED HOME SCREEN ---
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -60,7 +60,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool isLoading = true;
   TextEditingController searchController = TextEditingController(); 
 
-  // --- NEW VARIABLES FOR CATEGORIES ---
+  // --- VARIABLES FOR CATEGORIES ---
   final List<String> categories = ["All", "Vegetables", "Fruits", "Dairy", "General"];
   String selectedCategory = "All";
 
@@ -111,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // --- NEW: FILTER BY CATEGORY BUTTONS ---
+  // --- FILTER BY CATEGORY BUTTONS ---
   void filterByCategory(String category) {
     setState(() {
       selectedCategory = category;
@@ -148,6 +148,14 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: Colors.green,
         title: const Text("Vaishnav's Market", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         actions: [
+          // --- NEW: HISTORY BUTTON ---
+          IconButton(
+            icon: const Icon(Icons.history, color: Colors.white), // Clock Icon
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const OrdersPage()));
+            },
+          ),
+          
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: () async {
@@ -221,7 +229,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   const SizedBox(height: 15),
 
-                  // --- 3. NEW: CATEGORY CHIPS (Horizontal List) ---
+                  // --- 3. CATEGORY CHIPS (Horizontal List) ---
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 10),
