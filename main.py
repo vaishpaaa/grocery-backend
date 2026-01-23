@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client, Client
-from typing import List, Optional # <--- Added for optional fields
+from typing import List, Optional
 
 app = FastAPI()
 
@@ -20,11 +20,6 @@ url: str = "https://eopamdsepyvaglxpifji.supabase.co"
 key: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvcGFtZHNlcHl2YWdseHBpZmppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0NTk2NDcsImV4cCI6MjA4NDAzNTY0N30.4sStNUyBDOc6MrzTFMIg9eny4cb6ndVF6aOqecjUtXM"
 supabase: Client = create_client(url, key)
 
-class ProfileUpdate(BaseModel):
-    email: str
-    address: str
-    phone: str
-    
 # --- 3. DATA MODELS ---
 class User(BaseModel):
     email: str
@@ -34,20 +29,23 @@ class OrderModel(BaseModel):
     user_email: str
     total_price: float
     items: list
-    payment_id: Optional[str] = None # <--- NEW: Accepts Razorpay ID
+    payment_id: Optional[str] = None
 
-# --- 4. PRODUCT ENDPOINT (Now fetches from Database) ---
+class ProfileUpdate(BaseModel):
+    email: str
+    address: str
+    phone: str
+
+# --- 4. PRODUCT ENDPOINTS ---
 @app.get("/products")
 def get_products():
     try:
-        # Fetch products from DB so 'category' works!
         response = supabase.table("products").select("*").execute()
         return response.data
     except Exception as e:
         print(f"Error fetching products: {e}")
         return []
 
-# --- 5. BANNERS ENDPOINT ---
 @app.get("/banners")
 def get_banners():
     try:
@@ -57,7 +55,7 @@ def get_banners():
         print(f"Error fetching banners: {e}")
         return []
 
-# --- 6. AUTH ENDPOINTS ---
+# --- 5. AUTH ENDPOINTS ---
 @app.post("/signup")
 def signup(user: User):
     try:
@@ -83,27 +81,24 @@ def login(user: User):
             raise e
         return {"error": str(e)}
 
-# --- 7. ORDER SYSTEM (Updated for Razorpay) ---
+# --- 6. ORDER SYSTEM ---
 @app.post("/place_order")
 def place_order(order: OrderModel):
     try:
-        # Save order to DB with the Payment ID
         response = supabase.table("orders").insert({
             "user_email": order.user_email,
             "total_price": order.total_price,
             "items": order.items,
-            "payment_id": order.payment_id # <--- Saving Payment ID
+            "payment_id": order.payment_id
         }).execute()
         return {"message": "Order placed successfully!"}
     except Exception as e:
         print(f"Order Error: {e}")
         return {"error": str(e)}
 
-# --- NEW: ORDER HISTORY (Matches Flutter App) ---
 @app.get("/user_orders/{email}")
 def get_user_orders(email: str):
     try:
-        # Fetch orders for this email, newest first
         response = supabase.table("orders")\
             .select("*")\
             .eq("user_email", email)\
@@ -113,3 +108,25 @@ def get_user_orders(email: str):
     except Exception as e:
         print(f"Error fetching orders: {e}")
         return []
+
+# --- 7. PROFILE SYSTEM ---
+@app.post("/update_profile")
+def update_profile(data: ProfileUpdate):
+    try:
+        response = supabase.table("users").update({
+            "address": data.address,
+            "phone": data.phone
+        }).eq("email", data.email).execute()
+        return {"message": "Profile updated!"}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/get_profile/{email}")
+def get_profile(email: str):
+    try:
+        response = supabase.table("users").select("address, phone").eq("email", email).execute()
+        if response.data:
+            return response.data[0]
+        return {"address": "", "phone": ""}
+    except Exception as e:
+        return {"address": "", "phone": ""}
