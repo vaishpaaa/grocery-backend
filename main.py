@@ -20,6 +20,11 @@ url: str = "https://eopamdsepyvaglxpifji.supabase.co"
 key: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvcGFtZHNlcHl2YWdseHBpZmppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0NTk2NDcsImV4cCI6MjA4NDAzNTY0N30.4sStNUyBDOc6MrzTFMIg9eny4cb6ndVF6aOqecjUtXM"
 supabase: Client = create_client(url, key)
 
+class ProfileUpdate(BaseModel):
+    email: str
+    address: str
+    phone: str
+    
 # --- 3. DATA MODELS ---
 class User(BaseModel):
     email: str
