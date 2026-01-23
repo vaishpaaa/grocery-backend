@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart'; // <--- Import this
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:carousel_slider/carousel_slider.dart'; 
 import 'login_page.dart';
 import 'cart.dart'; 
 import 'cart_page.dart';
@@ -10,7 +11,7 @@ import 'orders_page.dart';
 String currentUserEmail = "";
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized(); // Required for async main
+  WidgetsFlutterBinding.ensureInitialized(); 
   
   // Check Memory before app starts
   final prefs = await SharedPreferences.getInstance();
@@ -22,12 +23,11 @@ void main() async {
 
   globalCart.clear(); 
   
-  // Pass the login state to the app
   runApp(GroceryApp(startHome: isLoggedIn));
 }
 
 class GroceryApp extends StatelessWidget {
-  final bool startHome; // Receive the decision
+  final bool startHome; 
   const GroceryApp({super.key, required this.startHome});
 
   @override
@@ -40,13 +40,12 @@ class GroceryApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.green, primary: Colors.green),
         useMaterial3: true,
       ),
-      // Decide which page to show first!
       home: startHome ? const HomeScreen() : const LoginPage(),
     );
   }
 }
 
-// ... Keep HomeScreen and the rest of the file the same ...
+// --- UPDATED HOME SCREEN WITH CATEGORIES ---
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -56,58 +55,106 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   List<dynamic> products = [];
+  List<dynamic> filteredProducts = []; 
+  List<dynamic> banners = [];
   bool isLoading = true;
+  TextEditingController searchController = TextEditingController(); 
+
+  // --- NEW VARIABLES FOR CATEGORIES ---
+  final List<String> categories = ["All", "Vegetables", "Fruits", "Dairy", "General"];
+  String selectedCategory = "All";
 
   @override
   void initState() {
     super.initState();
-    fetchProducts();
+    fetchData();
+  }
+
+  Future<void> fetchData() async {
+    await Future.wait([fetchProducts(), fetchBanners()]);
+    if (mounted) {
+      setState(() {
+        isLoading = false;
+      });
+    }
   }
 
   Future<void> fetchProducts() async {
-    // Using 127.0.0.1 for USB connection
     final url = Uri.parse('https://vaishnavi-api.onrender.com/products'); 
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
         setState(() {
           products = json.decode(response.body);
-          isLoading = false;
+          filteredProducts = products; // Initially, show everything
         });
-      } else {
-        setState(() { isLoading = false; });
       }
     } catch (e) {
-      print("Error: $e");
-      setState(() { isLoading = false; });
+      print("Error fetching products: $e");
+    }
+  }
+
+  // --- FILTER BY SEARCH TEXT ---
+  void runFilter(String enteredKeyword) {
+    List<dynamic> results = [];
+    if (enteredKeyword.isEmpty) {
+      results = products; 
+    } else {
+      results = products
+          .where((item) => item["name"].toLowerCase().contains(enteredKeyword.toLowerCase()))
+          .toList();
+    }
+
+    setState(() {
+      filteredProducts = results; 
+      selectedCategory = "All"; // Reset category when searching
+    });
+  }
+
+  // --- NEW: FILTER BY CATEGORY BUTTONS ---
+  void filterByCategory(String category) {
+    setState(() {
+      selectedCategory = category;
+      searchController.clear(); // Clear search bar when clicking category
+      
+      if (category == "All") {
+        filteredProducts = products;
+      } else {
+        filteredProducts = products
+            .where((item) => item["category"] == category) // Checks the database column
+            .toList();
+      }
+    });
+  }
+
+  Future<void> fetchBanners() async {
+    final url = Uri.parse('https://vaishnavi-api.onrender.com/banners');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        banners = json.decode(response.body);
+      }
+    } catch (e) {
+      print("Error fetching banners: $e");
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: Colors.white, 
       appBar: AppBar(
         elevation: 0,
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(colors: [Colors.green, Colors.teal]),
-          ),
-        ),
+        backgroundColor: Colors.green,
         title: const Text("Vaishnav's Market", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         actions: [
-          // LOGOUT BUTTON
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: () async {
               final prefs = await SharedPreferences.getInstance();
-              await prefs.clear(); // Wipe memory
+              await prefs.clear();
               Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginPage()));
             },
-          ),
-          IconButton(
-            icon: const Icon(Icons.history, color: Colors.white),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const OrdersPage())),
           ),
           IconButton(
             icon: const Icon(Icons.shopping_cart, color: Colors.white),
@@ -117,27 +164,127 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 0.75, // Adjusted for better fit
-                  crossAxisSpacing: 15,
-                  mainAxisSpacing: 15,
-                ),
-                itemCount: products.length,
-                itemBuilder: (context, index) {
-                  final item = products[index];
-                  return ProductCard(item: item);
-                },
+          : SingleChildScrollView( 
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  
+                  // --- 1. SEARCH BAR ---
+                  Container(
+                    color: Colors.green,
+                    padding: const EdgeInsets.only(left: 15, right: 15, bottom: 15),
+                    child: TextField(
+                      controller: searchController,
+                      onChanged: (value) => runFilter(value), 
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        hintText: "Search for milk, vegetables...",
+                        prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // --- 2. CAROUSEL SLIDER (BANNERS) ---
+                  if (banners.isNotEmpty)
+                    CarouselSlider(
+                      options: CarouselOptions(
+                        height: 180.0,
+                        autoPlay: true,
+                        enlargeCenterPage: true,
+                        aspectRatio: 16 / 9,
+                        viewportFraction: 0.9,
+                      ),
+                      items: banners.map((banner) {
+                        return Builder(
+                          builder: (BuildContext context) {
+                            return Container(
+                              width: MediaQuery.of(context).size.width,
+                              margin: const EdgeInsets.symmetric(horizontal: 5.0),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(15),
+                                image: DecorationImage(
+                                  image: NetworkImage(banner['image_url']),
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      }).toList(),
+                    ),
+
+                  const SizedBox(height: 15),
+
+                  // --- 3. NEW: CATEGORY CHIPS (Horizontal List) ---
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Row(
+                      children: categories.map((category) {
+                        final isSelected = selectedCategory == category;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 10),
+                          child: ChoiceChip(
+                            label: Text(category),
+                            selected: isSelected,
+                            selectedColor: Colors.green,
+                            labelStyle: TextStyle(
+                              color: isSelected ? Colors.white : Colors.black,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            backgroundColor: Colors.grey[200],
+                            onSelected: (bool selected) {
+                              if (selected) filterByCategory(category);
+                            },
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+
+                  const Padding(
+                    padding: EdgeInsets.all(15.0),
+                    child: Text("Shop by Category", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  ),
+
+                  // --- 4. PRODUCT GRID ---
+                  filteredProducts.isEmpty 
+                  ? const Padding(
+                      padding: EdgeInsets.all(40.0),
+                      child: Center(child: Text("No items found in this category")),
+                    )
+                  : GridView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      childAspectRatio: 0.75,
+                      crossAxisSpacing: 15,
+                      mainAxisSpacing: 15,
+                    ),
+                    itemCount: filteredProducts.length, 
+                    itemBuilder: (context, index) {
+                      final item = filteredProducts[index]; 
+                      return ProductCard(item: item);
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                ],
               ),
             ),
     );
   }
 }
 
-// --- BEAUTIFUL CARD COMPONENT ---
+// --- PRODUCT CARD & DETAIL SCREEN ---
+
 class ProductCard extends StatelessWidget {
   final dynamic item;
   const ProductCard({super.key, required this.item});
@@ -154,25 +301,25 @@ class ProductCard extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: Colors.grey.shade200),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5)),
+            BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 5, offset: const Offset(0, 2)),
           ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image with HERO Animation
             Expanded(
               child: Hero(
                 tag: item['name'], 
                 child: Container(
                   width: double.infinity,
                   decoration: const BoxDecoration(
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(15)),
                   ),
                   child: ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
                     child: Image.network(
                       item['image_url'] ?? "",
                       fit: BoxFit.cover,
@@ -182,15 +329,14 @@ class ProductCard extends StatelessWidget {
                 ),
               ),
             ),
-            // Details
             Padding(
-              padding: const EdgeInsets.all(12.0),
+              padding: const EdgeInsets.all(10.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     item['name'],
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -198,11 +344,11 @@ class ProductCard extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text("₹ ${item['price']}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text("₹${item['price']}", style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14)),
                       Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(color: Colors.green, borderRadius: BorderRadius.circular(10)),
-                        child: const Icon(Icons.add, color: Colors.white, size: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(color: Colors.green[50], borderRadius: BorderRadius.circular(4)),
+                        child: const Text("ADD", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
                       )
                     ],
                   )
@@ -216,7 +362,6 @@ class ProductCard extends StatelessWidget {
   }
 }
 
-// --- PRODUCT DETAIL SCREEN ---
 class ProductDetailScreen extends StatelessWidget {
   final dynamic item;
   const ProductDetailScreen({super.key, required this.item});
@@ -262,11 +407,10 @@ class ProductDetailScreen extends StatelessWidget {
                       height: 50,
                       child: ElevatedButton(
                         onPressed: () {
-                          // --- UPDATED ADD TO CART LOGIC ---
                           globalCart.add({
                             "name": item['name'], 
                             "price": item['price'], 
-                            "image_url": item['image_url'] // Saves Image Now!
+                            "image_url": item['image_url'] 
                           });
                           
                           ScaffoldMessenger.of(context).showSnackBar(

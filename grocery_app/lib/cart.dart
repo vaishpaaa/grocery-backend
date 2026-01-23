@@ -1,4 +1,4 @@
-// A simple global list to hold our items
+// lib/cart.dart
 List<Map<String, dynamic>> globalCart = [];
 
 // A helper to calculate total price
