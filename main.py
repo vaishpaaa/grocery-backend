@@ -2,10 +2,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client, Client
+from typing import List, Optional # <--- Added for optional fields
 
 app = FastAPI()
 
-# --- 1. CORS CONFIGURATION (Helps prevent connection blocks) ---
+# --- 1. CORS CONFIGURATION ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,72 +29,82 @@ class OrderModel(BaseModel):
     user_email: str
     total_price: float
     items: list
+    payment_id: Optional[str] = None # <--- NEW: Accepts Razorpay ID
 
-# --- 4. PRODUCT LIST (High-Speed Images) ---
-products = [
-    {"id": 1, "name": "Fresh Apples", "price": 120, "image_url": "https://placehold.co/400x400/png?text=Apples"},
-    {"id": 2, "name": "Aashirvaad Atta", "price": 240, "image_url": "https://placehold.co/400x400/png?text=Atta"},
-    {"id": 3, "name": "Amul Milk", "price": 32, "image_url": "https://placehold.co/400x400/png?text=Milk"},
-    {"id": 4, "name": "Dark Fantasy", "price": 40, "image_url": "https://placehold.co/400x400/png?text=Choco"},
-    {"id": 5, "name": "Tata Salt", "price": 25, "image_url": "https://placehold.co/400x400/png?text=Salt"},
-]
-
+# --- 4. PRODUCT ENDPOINT (Now fetches from Database) ---
 @app.get("/products")
 def get_products():
-    return products
+    try:
+        # Fetch products from DB so 'category' works!
+        response = supabase.table("products").select("*").execute()
+        return response.data
+    except Exception as e:
+        print(f"Error fetching products: {e}")
+        return []
 
-# --- 5. SECURE SIGNUP ---
+# --- 5. BANNERS ENDPOINT ---
+@app.get("/banners")
+def get_banners():
+    try:
+        response = supabase.table("banners").select("*").eq("is_active", "true").execute()
+        return response.data
+    except Exception as e:
+        print(f"Error fetching banners: {e}")
+        return []
+
+# --- 6. AUTH ENDPOINTS ---
 @app.post("/signup")
 def signup(user: User):
     try:
-        # Check if user already exists
         existing = supabase.table("users").select("*").eq("email", user.email).execute()
         if existing.data:
             return {"error": "User already exists!"}
         
-        # Create new user
         supabase.table("users").insert({"email": user.email, "password": user.password}).execute()
         return {"message": "Account created!"}
     except Exception as e:
         return {"error": str(e)}
 
-# --- 6. SECURE LOGIN (Fixed) ---
 @app.post("/login")
 def login(user: User):
     try:
-        # Find user by email
         response = supabase.table("users").select("*").eq("email", user.email).execute()
-        
-        # If no user found, OR password doesn't match
         if not response.data or response.data[0]['password'] != user.password:
-            # FORCE AN ERROR CODE (401)
             raise HTTPException(status_code=401, detail="Invalid email or password")
         
         return {"message": "Login Successful", "email": user.email}
     except Exception as e:
-        # If it was our manual 401 error, re-raise it so FastAPI handles it
         if "401" in str(e):
             raise e
         return {"error": str(e)}
 
-# --- 7. ORDER SYSTEM ---
+# --- 7. ORDER SYSTEM (Updated for Razorpay) ---
 @app.post("/place_order")
 def place_order(order: OrderModel):
     try:
+        # Save order to DB with the Payment ID
         response = supabase.table("orders").insert({
             "user_email": order.user_email,
             "total_price": order.total_price,
-            "items": order.items
+            "items": order.items,
+            "payment_id": order.payment_id # <--- Saving Payment ID
         }).execute()
         return {"message": "Order placed successfully!"}
     except Exception as e:
         print(f"Order Error: {e}")
         return {"error": str(e)}
 
-@app.get("/my_orders")
-def get_orders(email: str):
+# --- NEW: ORDER HISTORY (Matches Flutter App) ---
+@app.get("/user_orders/{email}")
+def get_user_orders(email: str):
     try:
-        response = supabase.table("orders").select("*").eq("user_email", email).order("created_at", desc=True).execute()
+        # Fetch orders for this email, newest first
+        response = supabase.table("orders")\
+            .select("*")\
+            .eq("user_email", email)\
+            .order("created_at", desc=True)\
+            .execute()
         return response.data
     except Exception as e:
+        print(f"Error fetching orders: {e}")
         return []
