@@ -130,3 +130,15 @@ def get_profile(email: str):
         return {"address": "", "phone": ""}
     except Exception as e:
         return {"address": "", "phone": ""}
+# --- 9. ADMIN SYSTEM ---
+@app.get("/admin/all_orders")
+def get_all_orders():
+    try:
+        # Fetch all orders, newest first
+        # We also want user details (address/phone), but for now let's just get the orders
+        # In a real app, we would join tables. Here we will keep it simple.
+        response = supabase.table("orders").select("*").order("created_at", desc=True).execute()
+        return response.data
+    except Exception as e:
+        print(f"Admin Error: {e}")
+        return []
