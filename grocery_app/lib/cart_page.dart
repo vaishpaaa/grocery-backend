@@ -30,30 +30,21 @@ class _CartPageState extends State<CartPage> {
     _razorpay.clear(); 
   }
 
-  // --- 1. OPEN RAZORPAY CHECKOUT ---
   void openCheckout() {
     if (globalCart.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cart is empty!")));
       return;
     }
-
-    // FIX 1: Use 0.0 (Decimal) instead of 0 (Integer)
     double totalAmount = globalCart.fold(0.0, (sum, item) => sum + (item['price'] as num));
 
     var options = {
-      'key': 'rzp_test_S6zkdC0PK4Nb1S', // Your Key looks good!
-      
+      'key': 'rzp_test_S6zkdC0PK4Nb1S', 
       'amount': (totalAmount * 100).toInt(), 
       'name': 'Vaishnav Market',
       'description': 'Grocery Bill',
       'timeout': 180, 
-      'prefill': {
-        'contact': '9876543210', 
-        'email': currentUserEmail.isEmpty ? 'test@example.com' : currentUserEmail,
-      },
-      'theme': {
-        'color': '#4CAF50' 
-      }
+      'prefill': {'contact': '9876543210', 'email': currentUserEmail},
+      'theme': {'color': '#5D4037'} // Brown Payment Screen
     };
 
     try {
@@ -63,88 +54,57 @@ class _CartPageState extends State<CartPage> {
     }
   }
 
-  // --- 2. HANDLE SUCCESS (Send Order to Backend) ---
   void _handlePaymentSuccess(PaymentSuccessResponse response) async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Payment Successful! ID: ${response.paymentId}"), backgroundColor: Colors.green),
-    );
-
     final url = Uri.parse('https://vaishnavi-api.onrender.com/place_order');
-    
-    // FIX 2: Use 0.0 here as well
     double totalAmount = globalCart.fold(0.0, (sum, item) => sum + (item['price'] as num));
 
     final body = {
-      "email": currentUserEmail,
+      "user_email": currentUserEmail, 
       "items": globalCart,
       "total_price": totalAmount,
       "payment_id": response.paymentId 
     };
 
     try {
-      final res = await http.post(
-        url, 
-        headers: {"Content-Type": "application/json"},
-        body: json.encode(body)
-      );
-
-      // FIX 3: Check if the user is still on this screen before showing dialog
+      final res = await http.post(url, headers: {"Content-Type": "application/json"}, body: json.encode(body));
       if (!mounted) return;
 
       if (res.statusCode == 200) {
-        setState(() {
-          globalCart.clear(); 
-        });
-        
+        setState(() { globalCart.clear(); });
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text("Order Placed! 🎉"),
-            content: const Text("Your groceries will be delivered soon."),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context); 
-                  Navigator.pop(context); 
-                },
-                child: const Text("OK"),
-              )
-            ],
+            backgroundColor: Color(0xFFFFF8E1),
+            title: const Text("Order Placed! 🥖", style: TextStyle(color: Color(0xFF5D4037))),
+            content: const Text("Your fresh groceries will be delivered soon."),
+            actions: [TextButton(onPressed: () { Navigator.pop(context); Navigator.pop(context); }, child: const Text("OK", style: TextStyle(color: Color(0xFF5D4037))))],
           ),
         );
       }
     } catch (e) {
-      print("Backend Error: $e");
+      print("Error: $e");
     }
   }
 
   void _handlePaymentError(PaymentFailureResponse response) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Payment Failed: ${response.message}"), backgroundColor: Colors.red),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Payment Failed: ${response.message}"), backgroundColor: Colors.red));
   }
 
-  void _handleExternalWallet(ExternalWalletResponse response) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("External Wallet: ${response.walletName}")),
-    );
-  }
+  void _handleExternalWallet(ExternalWalletResponse response) {}
 
   @override
   Widget build(BuildContext context) {
-    // FIX 4: Use 0.0 here too!
     double totalAmount = globalCart.fold(0.0, (sum, item) => sum + (item['price'] as num));
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: const Color(0xFFFFF8E1), // Cream
       appBar: AppBar(
-        title: const Text("My Cart", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
+        title: const Text("My Cart", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: const Color(0xFF5D4037), // Brown
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: globalCart.isEmpty
-          ? const Center(child: Text("Your cart is empty", style: TextStyle(fontSize: 18, color: Colors.grey)))
+          ? const Center(child: Text("Your cart is empty", style: TextStyle(fontSize: 18, color: Colors.brown)))
           : Column(
               children: [
                 Expanded(
@@ -163,10 +123,7 @@ class _CartPageState extends State<CartPage> {
                               width: 60, height: 60,
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(8),
-                                image: DecorationImage(
-                                  image: NetworkImage(item['image_url'] ?? ""),
-                                  fit: BoxFit.cover,
-                                )
+                                image: DecorationImage(image: NetworkImage(item['image_url'] ?? ""), fit: BoxFit.cover),
                               ),
                             ),
                             const SizedBox(width: 15),
@@ -174,17 +131,15 @@ class _CartPageState extends State<CartPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(item['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                  Text("₹${item['price']}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                                  Text(item['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF3E2723))),
+                                  Text("₹${item['price']}", style: const TextStyle(color: Color(0xFF5D4037), fontWeight: FontWeight.bold)),
                                 ],
                               ),
                             ),
                             IconButton(
                               icon: const Icon(Icons.delete, color: Colors.red),
                               onPressed: () {
-                                setState(() {
-                                  globalCart.removeAt(index);
-                                });
+                                setState(() { globalCart.removeAt(index); });
                               },
                             )
                           ],
@@ -195,17 +150,14 @@ class _CartPageState extends State<CartPage> {
                 ),
                 Container(
                   padding: const EdgeInsets.all(20),
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -5))],
-                  ),
+                  decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -5))]),
                   child: Column(
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text("Total Amount", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                          Text("₹$totalAmount", style: const TextStyle(fontSize: 22, color: Colors.green, fontWeight: FontWeight.bold)),
+                          Text("₹$totalAmount", style: const TextStyle(fontSize: 22, color: Color(0xFF5D4037), fontWeight: FontWeight.bold)),
                         ],
                       ),
                       const SizedBox(height: 20),
@@ -214,10 +166,7 @@ class _CartPageState extends State<CartPage> {
                         height: 50,
                         child: ElevatedButton(
                           onPressed: openCheckout, 
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF5D4037), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                           child: const Text("CHECKOUT & PAY", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                         ),
                       )
