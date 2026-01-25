@@ -176,3 +176,43 @@ def get_all_orders():
     except Exception as e:
         print(f"Admin Error: {e}")
         return []
+# --- 10. WISHLIST SYSTEM ---
+class WishlistItem(BaseModel):
+    user_email: str
+    product_name: str
+    image_url: str
+    price: float
+
+@app.post("/add_wishlist")
+def add_wishlist(item: WishlistItem):
+    try:
+        # Check if already exists to prevent duplicates
+        exists = supabase.table("wishlist").select("*").eq("user_email", item.user_email).eq("product_name", item.product_name).execute()
+        if exists.data:
+            return {"message": "Already in wishlist"}
+            
+        supabase.table("wishlist").insert({
+            "user_email": item.user_email,
+            "product_name": item.product_name,
+            "image_url": item.image_url,
+            "price": item.price
+        }).execute()
+        return {"message": "Added to Wishlist"}
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/get_wishlist/{email}")
+def get_wishlist(email: str):
+    try:
+        response = supabase.table("wishlist").select("*").eq("user_email", email).execute()
+        return response.data
+    except Exception as e:
+        return []
+
+@app.delete("/remove_wishlist")
+def remove_wishlist(email: str, product_name: str):
+    try:
+        supabase.table("wishlist").delete().eq("user_email", email).eq("product_name", product_name).execute()
+        return {"message": "Removed"}
+    except Exception as e:
+        return {"error": str(e)}
