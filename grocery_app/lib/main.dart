@@ -11,13 +11,18 @@ import 'profile_page.dart';
 import 'admin_page.dart'; 
 import 'splash_screen.dart';
 import 'wishlist_page.dart';
-
+import 'package:speech_to_text/speech_to_text.dart' as stt; // <--- ADD THIS
 String currentUserEmail = "";
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Note: We removed the SharedPreferences check here because 
-  // the Splash Screen will handle it now!
+  
+  final prefs = await SharedPreferences.getInstance();
+  final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+  if(isLoggedIn) {
+    currentUserEmail = prefs.getString('userEmail') ?? "";
+  }
+
   runApp(const GroceryApp());
 }
 
@@ -28,7 +33,7 @@ class GroceryApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'V S M',
+      title: 'Vaishnavi super market',
       theme: ThemeData(
         fontFamily: 'Roboto',
         scaffoldBackgroundColor: const Color(0xFFFFF8E1),
@@ -48,7 +53,6 @@ class GroceryApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      // START WITH SPLASH SCREEN
       home: const SplashScreen(),
     );
   }
@@ -66,7 +70,13 @@ class _HomeScreenState extends State<HomeScreen> {
   List<dynamic> filteredProducts = []; 
   List<dynamic> banners = [];
   bool isLoading = true;
+  int userCoins = 0;
   TextEditingController searchController = TextEditingController(); 
+
+  // --- VOICE SEARCH VARIABLES ---
+  late stt.SpeechToText _speech;
+  bool _isListening = false;
+  // -----------------------------
 
   final List<String> categories = ["All", "Vegetables", "Fruits", "Dairy", "General"];
   String selectedCategory = "All";
@@ -74,15 +84,70 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _speech = stt.SpeechToText(); // Initialize Speech
     fetchData();
   }
 
+  // --- VOICE SEARCH FUNCTION ---
+  // --- UPDATED SMART VOICE SEARCH ---
+  void _listen() async {
+    if (!_isListening) {
+      bool available = await _speech.initialize(
+        // 1. AUTO-DISABLE LOGIC: Turn off mic when phone says 'done' or 'notListening'
+        onStatus: (val) {
+          print('onStatus: $val');
+          if (val == 'done' || val == 'notListening') {
+            setState(() => _isListening = false);
+          }
+        },
+        onError: (val) {
+          print('onError: $val');
+          setState(() => _isListening = false); // Turn off on error too
+        },
+      );
+
+      if (available) {
+        setState(() => _isListening = true); // Turn ON Red Icon
+        _speech.listen(
+          onResult: (val) {
+            setState(() {
+              searchController.text = val.recognizedWords;
+              runFilter(val.recognizedWords);
+            });
+          },
+        );
+      }
+    } else {
+      // 2. MANUAL DISABLE: If user taps again, stop immediately
+      setState(() => _isListening = false);
+      _speech.stop();
+    }
+  }
+  // ----------------------------------
+  // -----------------------------
+
   Future<void> fetchData() async {
-    await Future.wait([fetchProducts(), fetchBanners()]);
+    await Future.wait([fetchProducts(), fetchBanners(), fetchCoins()]);
     if (mounted) {
       setState(() {
         isLoading = false;
       });
+    }
+  }
+
+  Future<void> fetchCoins() async {
+    if (currentUserEmail.isEmpty) return;
+    try {
+      final url = Uri.parse('https://vaishnavi-api.onrender.com/get_profile/$currentUserEmail');
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() {
+          userCoins = data['coins'] ?? 0;
+        });
+      }
+    } catch (e) {
+      print("Error fetching coins: $e");
     }
   }
 
@@ -145,58 +210,89 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("V S M"),
-        actions: [
-          if (currentUserEmail == "vaishpaa@gmail.com") 
-            IconButton(
-              icon: const Icon(Icons.admin_panel_settings, color: Colors.white),
-              onPressed: () {
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminPage()));
+      drawer: Drawer(
+        backgroundColor: Colors.white,
+        child: Column(
+          children: [
+            UserAccountsDrawerHeader(
+              decoration: const BoxDecoration(color: Color(0xFF5D4037)),
+              accountName: const Text("Welcome back,", style: TextStyle(fontSize: 14, color: Colors.white70)),
+              accountEmail: Text(currentUserEmail, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              currentAccountPicture: const CircleAvatar(
+                backgroundColor: Colors.white,
+                child: Icon(Icons.person, size: 40, color: Color(0xFF5D4037)),
+              ),
+            ),
+            if (currentUserEmail == "vaishpaa@gmail.com")
+              ListTile(
+                leading: const Icon(Icons.admin_panel_settings, color: Colors.brown),
+                title: const Text("Admin Panel"),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminPage())),
+              ),
+            ListTile(
+              leading: const Icon(Icons.person, color: Colors.brown),
+              title: const Text("My Profile"),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfilePage())),
+            ),
+            ListTile(
+              leading: const Icon(Icons.history, color: Colors.brown),
+              title: const Text("Order History"),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const OrdersPage())),
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: const Text("Logout"),
+              onTap: () async {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.clear();
+                if(!context.mounted) return;
+                Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginPage()));
               },
             ),
-          
-          IconButton(
-            icon: const Icon(Icons.person, color: Colors.white),
-            onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfilePage()));
-            },
+          ],
+        ),
+      ),
+      appBar: AppBar(
+        title: const Text("Vaishnav's Market"),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(30),
+          child: Container(
+            color: const Color(0xFF4E342E),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                const Text("Loyalty Balance: ", style: TextStyle(color: Colors.white70, fontSize: 12)),
+                const Icon(Icons.monetization_on, color: Colors.amber, size: 14),
+                const SizedBox(width: 4),
+                Text("$userCoins Coins", style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12)),
+              ],
+            ),
           ),
+        ),
+        actions: [
           IconButton(
-            icon: const Icon(Icons.history, color: Colors.white),
-            onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const OrdersPage()));
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () async {
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.clear();
-              Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginPage()));
-            },
+            icon: const Icon(Icons.favorite, color: Colors.white),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const WishlistPage())),
           ),
           IconButton(
             icon: const Icon(Icons.shopping_cart, color: Colors.white),
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const CartPage())),
           ),
-          IconButton(
-            icon: const Icon(Icons.favorite, color: Colors.white),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const WishlistPage())),
-          ),
         ],
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF5D4037)))
-          : SafeArea( // ADDED SAFE AREA
+          : SafeArea(
               child: SingleChildScrollView( 
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Search Bar Area (Brown)
+                    // --- SEARCH BAR WITH VOICE MIC ---
                     Container(
                       color: const Color(0xFF5D4037), 
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 20), // Better Padding
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
                       child: TextField(
                         controller: searchController,
                         onChanged: (value) => runFilter(value), 
@@ -204,26 +300,31 @@ class _HomeScreenState extends State<HomeScreen> {
                         decoration: InputDecoration(
                           filled: true,
                           fillColor: Colors.white,
-                          hintText: "Search for bread, coffee...",
-                          hintStyle: TextStyle(color: Colors.brown[300]),
+                          hintText: _isListening ? "Listening..." : "Search items...",
+                          hintStyle: TextStyle(color: _isListening ? Colors.red : Colors.brown[300]),
                           prefixIcon: const Icon(Icons.search, color: Color(0xFF5D4037)),
+                          // MIC ICON BUTTON
+                          suffixIcon: IconButton(
+                            icon: Icon(_isListening ? Icons.mic : Icons.mic_none, color: _isListening ? Colors.red : Colors.brown),
+                            onPressed: _listen,
+                          ),
                           contentPadding: const EdgeInsets.symmetric(vertical: 12),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
                         ),
                       ),
                     ),
+                    // ---------------------------------
 
                     const SizedBox(height: 20), 
 
-                    // Banners
                     if (banners.isNotEmpty)
                       CarouselSlider(
                         options: CarouselOptions(
-                          height: 160.0, // Slightly reduced for better ratio
+                          height: 160.0,
                           autoPlay: true,
                           enlargeCenterPage: true,
                           aspectRatio: 16 / 9,
-                          viewportFraction: 0.92, // Shows peek of next banner
+                          viewportFraction: 0.92,
                         ),
                         items: banners.map((banner) {
                           return Builder(
@@ -242,17 +343,16 @@ class _HomeScreenState extends State<HomeScreen> {
                         }).toList(),
                       ),
                     
-                    const SizedBox(height: 24), // Vertical Rhythm
+                    const SizedBox(height: 24),
 
-                    // Categories
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 16), // Align with screen edge
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Row(
                         children: categories.map((category) {
                           final isSelected = selectedCategory == category;
                           return Padding(
-                            padding: const EdgeInsets.only(right: 12), // Consistent spacing
+                            padding: const EdgeInsets.only(right: 12),
                             child: ChoiceChip(
                               label: Text(category),
                               selected: isSelected,
@@ -271,32 +371,31 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
 
                     const Padding(
-                      padding: EdgeInsets.fromLTRB(16, 24, 16, 12), // Title Padding
+                      padding: EdgeInsets.fromLTRB(16, 24, 16, 12),
                       child: Text(
                         "Fresh Picks For You", 
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF3E2723), letterSpacing: 0.5)
                       )
                     ),
                     
-                    // Product Grid
                     filteredProducts.isEmpty 
                     ? const Padding(padding: EdgeInsets.all(50.0), child: Center(child: Text("No items found")))
                     : GridView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16), // Screen Edge Padding
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 2, 
-                        childAspectRatio: 0.72, // PERFECT RATIO for Image + Text + Button
-                        crossAxisSpacing: 16,   // Space between cards horizontally
-                        mainAxisSpacing: 16,    // Space between cards vertically
+                        childAspectRatio: 0.72,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
                       ),
                       itemCount: filteredProducts.length, 
                       itemBuilder: (context, index) {
                         return ProductCard(item: filteredProducts[index]);
                       },
                     ),
-                    const SizedBox(height: 40), // Bottom breathing room
+                    const SizedBox(height: 40),
                   ],
                 ),
               ),
@@ -304,8 +403,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-
-// --- SMART PRODUCT CARD (UPDATED WITH WISHLIST) ---
+// --- PRODUCT CARD (Stock, Wishlist & Heart) ---
 class ProductCard extends StatefulWidget {
   final dynamic item;
   const ProductCard({super.key, required this.item});
@@ -372,10 +470,10 @@ class _ProductCardState extends State<ProductCard> {
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16), // Modern 16px radius
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF5D4037).withOpacity(0.08), // Very subtle brown shadow
+              color: const Color(0xFF5D4037).withOpacity(0.08),
               blurRadius: 15,
               offset: const Offset(0, 5), 
             )
@@ -384,9 +482,9 @@ class _ProductCardState extends State<ProductCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- 1. IMAGE SECTION (Flexible Height) ---
+            // IMAGE SECTION
             Expanded(
-              flex: 4, // Takes 4/7th of the card
+              flex: 4,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -419,12 +517,16 @@ class _ProductCardState extends State<ProductCard> {
                       ),
                     ),
                   
-                  // --- HEART BUTTON (Top Right) ---
+                  // HEART BUTTON
                   Positioned(
                     top: 8,
                     right: 8,
                     child: GestureDetector(
                       onTap: () async {
+                        if (currentUserEmail.isEmpty) {
+                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please login first!")));
+                           return;
+                        }
                         final url = Uri.parse('https://vaishnavi-api.onrender.com/add_wishlist');
                         await http.post(url, 
                           headers: {"Content-Type": "application/json"},
@@ -448,14 +550,14 @@ class _ProductCardState extends State<ProductCard> {
               ),
             ),
             
-            // --- 2. DETAILS SECTION ---
+            // DETAILS SECTION
             Expanded(
-              flex: 3, // Takes 3/7th of the card
+              flex: 3,
               child: Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween, // Pushes button to bottom
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -478,7 +580,6 @@ class _ProductCardState extends State<ProductCard> {
                       ],
                     ),
                     
-                    // Price & Button
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -491,7 +592,6 @@ class _ProductCardState extends State<ProductCard> {
                           ),
                         ),
                         
-                        // Compact Button
                         if (!isOutOfStock)
                           quantity == 0 
                           ? SizedBox(
@@ -499,8 +599,8 @@ class _ProductCardState extends State<ProductCard> {
                               child: ElevatedButton(
                                 onPressed: _increment,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFFFF8E1), // Cream bg
-                                  foregroundColor: const Color(0xFF5D4037), // Brown text
+                                  backgroundColor: const Color(0xFFFFF8E1),
+                                  foregroundColor: const Color(0xFF5D4037),
                                   elevation: 0,
                                   side: const BorderSide(color: Color(0xFF5D4037)),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -570,7 +670,7 @@ class ProductDetailScreen extends StatelessWidget {
           SliverList(
             delegate: SliverChildListDelegate([
               Padding(
-                padding: const EdgeInsets.all(24), // Consistent 24px padding for details
+                padding: const EdgeInsets.all(24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -583,7 +683,7 @@ class ProductDetailScreen extends StatelessWidget {
                     
                     SizedBox(
                       width: double.infinity,
-                      height: 56, // Slightly taller button
+                      height: 56,
                       child: ElevatedButton(
                         onPressed: () {
                           globalCart.add({"name": item['name'], "price": item['price'], "image_url": item['image_url']});

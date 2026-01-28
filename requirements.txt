@@ -2,3 +2,5 @@ fastapi
 uvicorn
 supabase
 pydantic
+pillow
+numpy
