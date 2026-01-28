@@ -120,7 +120,20 @@ def place_order(order: OrderModel):
             
             supabase.table("products").update({"stock_quantity": new_stock}).eq("name", product_name).execute()
 
-        return {"message": "Order placed successfully!"}
+        # --- NEW: LOYALTY COIN LOGIC ---
+        # 1. Calculate coins (10% of total price)
+        coins_earned = int(order.total_price * 0.10)
+        
+        # 2. Get current coins
+        current_profile = supabase.table("profiles").select("coins").eq("email", order.user_email).execute()
+        current_coins = current_profile.data[0]['coins'] if current_profile.data else 0
+        
+        # 3. Update new balance
+        new_balance = current_coins + coins_earned
+        supabase.table("profiles").update({"coins": new_balance}).eq("email", order.user_email).execute()
+        # -------------------------------
+
+        return {"message": f"Order placed! You earned {coins_earned} Coins! 🪙"}
     except Exception as e:
         print(f"Order Error: {e}")
         # If it's our custom stock error, pass it to the app
@@ -141,15 +154,44 @@ def update_profile(data: ProfileUpdate):
     except Exception as e:
         return {"error": str(e)}
 
-@app.get("/get_profile/{email}")
-def get_profile(email: str):
+@app.post("/place_order")
+def place_order(order: Order):
     try:
-        response = supabase.table("users").select("address, phone").eq("email", email).execute()
-        if response.data:
-            return response.data[0]
-        return {"address": "", "phone": ""}
+        # 1. Insert Order into Database
+        order_data = {
+            "user_email": order.user_email,
+            "items": order.items,
+            "total_price": order.total_price,
+            "status": "Pending" # Default status
+        }
+        supabase.table("orders").insert(order_data).execute()
+
+        # --- NEW: LOYALTY COIN LOGIC ---
+        # 1. Calculate coins (10% of total price)
+        coins_earned = int(order.total_price * 0.10)
+        
+        # 2. Get current coins from 'profiles' table
+        current_profile = supabase.table("profiles").select("coins").eq("email", order.user_email).execute()
+        
+        # If profile exists, get coins. If not, start at 0.
+        current_coins = current_profile.data[0]['coins'] if current_profile.data else 0
+        
+        # 3. Update new balance
+        new_balance = current_coins + coins_earned
+        
+        # Check if profile exists to decide between UPDATE or INSERT
+        if current_profile.data:
+            supabase.table("profiles").update({"coins": new_balance}).eq("email", order.user_email).execute()
+        else:
+            # Create profile if it doesn't exist yet
+            supabase.table("profiles").insert({"email": order.user_email, "coins": new_balance}).execute()
+        # -------------------------------
+
+        return {"message": f"Order placed! You earned {coins_earned} Coins! 🪙"}
+
     except Exception as e:
-        return {"address": "", "phone": ""}
+        return {"error": str(e)}
+
 # --- 9. ADMIN SYSTEM (SMARTER VERSION) ---
 @app.get("/admin/all_orders")
 def get_all_orders():
