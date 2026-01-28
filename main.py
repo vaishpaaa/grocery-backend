@@ -311,3 +311,37 @@ async def visual_search(file: UploadFile = File(...)):
 
     except Exception as e:
         return {"error": str(e)}
+# --- 12. VAISHNAV AI CHATBOT ---
+class ChatQuery(BaseModel):
+    text: str
+
+@app.post("/chat")
+def ai_chat(query: ChatQuery):
+    q = query.text.lower()
+    
+    # 1. Greeting
+    if "hello" in q or "hi" in q:
+        return {"response": "Hello! I am Vaishnav AI 🤖. Ask me about products or delivery!"}
+    
+    # 2. Delivery & Support
+    if "delivery" in q or "time" in q:
+        return {"response": "We deliver in 30-45 minutes! 🚀"}
+    if "return" in q or "refund" in q:
+        return {"response": "You can return damaged items within 24 hours."}
+    
+    # 3. Smart Product Search (The Magic)
+    try:
+        # Search the database for the word the user said
+        # We split the sentence and look for keywords
+        words = q.split()
+        for word in words:
+            if len(word) > 3: # Ignore small words like "the", "and"
+                response = supabase.table("products").select("*").ilike("name", f"%{word}%").execute()
+                if response.data:
+                    item = response.data[0]
+                    return {"response": f"Yes! We have {item['name']} in stock for ₹{item['price']}. 🛍️"}
+        
+        return {"response": "I couldn't find that item specifically, but we are adding new stock daily!"}
+        
+    except Exception as e:
+        return {"response": "I am having trouble connecting to the brain right now. 😵"}
