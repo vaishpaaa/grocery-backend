@@ -9,10 +9,9 @@ import io
 
 app = FastAPI()
 
-# --- 1. CONFIGURATION ---
-# ⚠️ PASTE YOUR SUPABASE KEYS HERE AGAIN!
-url: str = "YOUR_SUPABASE_URL_HERE"
-key: str = "YOUR_SUPABASE_ANON_KEY_HERE"
+# --- 1. CONFIGURATION (I have put your real keys here) ---
+url: str = "https://eopamdsepyvaglxpifji.supabase.co"
+key: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvcGFtZHNlcHl2YWdseHBpZmppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0NTk2NDcsImV4cCI6MjA4NDAzNTY0N30.4sStNUyBDOc6MrzTFMIg9eny4cb6ndVF6aOqecjUtXM"
 supabase: Client = create_client(url, key)
 
 app.add_middleware(
@@ -23,7 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 2. DATA MODELS ---
+# --- 2. DATA MODELS (BLUEPRINTS) ---
 class User(BaseModel):
     email: str
     password: str
@@ -33,7 +32,7 @@ class Order(BaseModel):
     total_price: float
     items: list
     payment_id: Optional[str] = None
-    payment_mode: str = "Online" # <--- NEW FIELD
+    payment_mode: str = "Online"  # <--- Added for COD
 
 class ProfileUpdate(BaseModel):
     email: str
@@ -56,13 +55,17 @@ def home():
 
 @app.get("/products")
 def get_products():
-    try: return supabase.table("products").select("*").execute().data
-    except: return []
+    try:
+        return supabase.table("products").select("*").execute().data
+    except:
+        return []
 
 @app.get("/banners")
 def get_banners():
-    try: return supabase.table("banners").select("*").eq("is_active", "true").execute().data
-    except: return []
+    try:
+        return supabase.table("banners").select("*").eq("is_active", "true").execute().data
+    except:
+        return []
 
 # --- 4. AUTH & PROFILE ---
 @app.post("/signup")
@@ -113,7 +116,8 @@ def add_wishlist(item: WishlistItem):
 
 @app.get("/get_wishlist/{email}")
 def get_wishlist(email: str):
-    try: return supabase.table("wishlist").select("*").eq("user_email", email).execute().data
+    try:
+        return supabase.table("wishlist").select("*").eq("user_email", email).execute().data
     except: return []
 
 @app.delete("/remove_wishlist")
@@ -123,7 +127,7 @@ def remove_wishlist(email: str, product_name: str):
         return {"message": "Removed"}
     except: return {"error": "Failed"}
 
-# --- 6. ORDER PLACEMENT (UPDATED FOR COD) ---
+# --- 6. ORDER PLACEMENT (NOW HANDLES COD) ---
 @app.post("/place_order")
 def place_order(order: Order):
     try:
@@ -140,7 +144,7 @@ def place_order(order: Order):
             "items": order.items,
             "payment_id": order.payment_id,
             "status": "Pending",
-            "payment_mode": order.payment_mode # <--- SAVING COD or ONLINE
+            "payment_mode": order.payment_mode
         }).execute()
 
         # Update Stock
@@ -165,10 +169,11 @@ def place_order(order: Order):
         if "Out of Stock" in str(e): raise e
         return {"error": str(e)}
 
-# --- 7. ORDER HISTORY ---
+# --- 7. ORDER HISTORY (FIXED: THIS WAS MISSING) ---
 @app.get("/my_orders/{email}")
 def get_my_orders(email: str):
     try:
+        # Fetch orders, newest first
         response = supabase.table("orders").select("*").eq("user_email", email).order("created_at", desc=True).execute()
         return response.data
     except Exception as e:
