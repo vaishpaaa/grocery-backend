@@ -9,7 +9,11 @@ import io
 
 app = FastAPI()
 
-# --- 1. CORS CONFIGURATION ---
+# --- 1. CONFIGURATION ---
+url: str = "https://eopamdsepyvaglxpifji.supabase.co"
+key: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvcGFtZHNlcHl2YWdseHBpZmppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0NTk2NDcsImV4cCI6MjA4NDAzNTY0N30.4sStNUyBDOc6MrzTFMIg9eny4cb6ndVF6aOqecjUtXM"
+supabase: Client = create_client(url, key)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,14 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 2. SUPABASE CONFIGURATION ---
-url: str = "https://eopamdsepyvaglxpifji.supabase.co"
-key: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvcGFtZHNlcHl2YWdseHBpZmppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0NTk2NDcsImV4cCI6MjA4NDAzNTY0N30.4sStNUyBDOc6MrzTFMIg9eny4cb6ndVF6aOqecjUtXM"
-supabase: Client = create_client(url, key)
-
-# --- 3. DATA MODELS (BLUEPRINTS) ---
-# These must be defined BEFORE the functions that use them.
-
+# --- 2. DATA MODELS ---
 class User(BaseModel):
     email: str
     password: str
@@ -50,7 +47,7 @@ class WishlistItem(BaseModel):
 class ChatQuery(BaseModel):
     text: str
 
-# --- 4. PRODUCT ENDPOINTS ---
+# --- 3. BASIC ROUTES ---
 @app.get("/")
 def home():
     return {"message": "Vaishnav's Supermarket API is Live! 🚀"}
@@ -58,33 +55,26 @@ def home():
 @app.get("/products")
 def get_products():
     try:
-        response = supabase.table("products").select("*").execute()
-        return response.data
-    except Exception as e:
-        print(f"Error fetching products: {e}")
+        return supabase.table("products").select("*").execute().data
+    except:
         return []
 
 @app.get("/banners")
 def get_banners():
     try:
-        response = supabase.table("banners").select("*").eq("is_active", "true").execute()
-        return response.data
-    except Exception as e:
-        print(f"Error fetching banners: {e}")
+        return supabase.table("banners").select("*").eq("is_active", "true").execute().data
+    except:
         return []
 
-# --- 5. AUTH ENDPOINTS ---
+# --- 4. AUTH & PROFILE ---
 @app.post("/signup")
 def signup(user: User):
     try:
         existing = supabase.table("users").select("*").eq("email", user.email).execute()
-        if existing.data:
-            return {"error": "User already exists!"}
-        
+        if existing.data: return {"error": "User already exists!"}
         supabase.table("users").insert({"email": user.email, "password": user.password}).execute()
         return {"message": "Account created!"}
-    except Exception as e:
-        return {"error": str(e)}
+    except Exception as e: return {"error": str(e)}
 
 @app.post("/login")
 def login(user: User):
@@ -92,57 +82,62 @@ def login(user: User):
         response = supabase.table("users").select("*").eq("email", user.email).execute()
         if not response.data or response.data[0]['password'] != user.password:
             raise HTTPException(status_code=401, detail="Invalid email or password")
-        
         return {"message": "Login Successful", "email": user.email}
     except Exception as e:
-        if "401" in str(e):
-            raise e
+        if "401" in str(e): raise e
         return {"error": str(e)}
 
 @app.get("/get_profile/{email}")
 def get_profile(email: str):
     try:
         data = supabase.table("profiles").select("*").eq("email", email).execute()
-        if data.data:
-            return data.data[0]
-        else:
-            # Create if not exists
-            new_profile = {"email": email, "coins": 0}
-            supabase.table("profiles").insert(new_profile).execute()
-            return new_profile
-    except Exception as e:
-        return {"error": str(e)}
+        if data.data: return data.data[0]
+        supabase.table("profiles").insert({"email": email, "coins": 0}).execute()
+        return {"email": email, "coins": 0}
+    except: return {"error": "Profile error"}
 
 @app.post("/update_profile")
 def update_profile(data: ProfileUpdate):
     try:
-        response = supabase.table("users").update({
-            "address": data.address,
-            "phone": data.phone
-        }).eq("email", data.email).execute()
-        return {"message": "Profile updated!"}
-    except Exception as e:
-        return {"error": str(e)}
+        supabase.table("users").update({"address": data.address, "phone": data.phone}).eq("email", data.email).execute()
+        return {"message": "Updated"}
+    except Exception as e: return {"error": str(e)}
 
-# --- 6. ORDER SYSTEM (WITH STOCK & COINS) ---
+# --- 5. WISHLIST ---
+@app.post("/add_wishlist")
+def add_wishlist(item: WishlistItem):
+    try:
+        exists = supabase.table("wishlist").select("*").eq("user_email", item.user_email).eq("product_name", item.product_name).execute()
+        if exists.data: return {"message": "Already added"}
+        supabase.table("wishlist").insert(item.dict()).execute()
+        return {"message": "Added"}
+    except Exception as e: return {"error": str(e)}
+
+@app.get("/get_wishlist/{email}")
+def get_wishlist(email: str):
+    try:
+        return supabase.table("wishlist").select("*").eq("user_email", email).execute().data
+    except: return []
+
+@app.delete("/remove_wishlist")
+def remove_wishlist(email: str, product_name: str):
+    try:
+        supabase.table("wishlist").delete().eq("user_email", email).eq("product_name", product_name).execute()
+        return {"message": "Removed"}
+    except: return {"error": "Failed"}
+
+# --- 6. ORDER PLACEMENT ---
 @app.post("/place_order")
 def place_order(order: Order):
     try:
-        # 1. CHECK STOCK
+        # Check Stock
         for item in order.items:
-            product_name = item['name']
-            response = supabase.table("products").select("stock_quantity").eq("name", product_name).execute()
-            
-            if not response.data:
-                continue 
-                
-            current_stock = response.data[0]['stock_quantity']
-            
-            if current_stock <= 0:
-                raise HTTPException(status_code=400, detail=f"Sorry! {product_name} is Out of Stock.")
+            prod = supabase.table("products").select("stock_quantity").eq("name", item['name']).execute()
+            if prod.data and prod.data[0]['stock_quantity'] <= 0:
+                raise HTTPException(status_code=400, detail=f"{item['name']} is Out of Stock!")
 
-        # 2. PLACE ORDER
-        response = supabase.table("orders").insert({
+        # Save Order
+        supabase.table("orders").insert({
             "user_email": order.user_email,
             "total_price": order.total_price,
             "items": order.items,
@@ -150,163 +145,83 @@ def place_order(order: Order):
             "status": "Pending"
         }).execute()
 
-        # 3. DECREASE STOCK
+        # Update Stock
         for item in order.items:
-            product_name = item['name']
-            curr_data = supabase.table("products").select("stock_quantity").eq("name", product_name).execute()
-            if curr_data.data:
-                curr_stock = curr_data.data[0]['stock_quantity']
-                new_stock = curr_stock - 1
-                supabase.table("products").update({"stock_quantity": new_stock}).eq("name", product_name).execute()
+            curr = supabase.table("products").select("stock_quantity").eq("name", item['name']).execute()
+            if curr.data:
+                new_qty = curr.data[0]['stock_quantity'] - 1
+                supabase.table("products").update({"stock_quantity": new_qty}).eq("name", item['name']).execute()
 
-        # 4. LOYALTY COINS LOGIC
-        coins_earned = int(order.total_price * 0.10)
+        # Update Coins
+        coins = int(order.total_price * 0.10)
+        profile = supabase.table("profiles").select("coins").eq("email", order.user_email).execute()
+        current_coins = profile.data[0]['coins'] if profile.data else 0
         
-        current_profile = supabase.table("profiles").select("coins").eq("email", order.user_email).execute()
-        current_coins = current_profile.data[0]['coins'] if current_profile.data else 0
-        
-        new_balance = current_coins + coins_earned
-        
-        if current_profile.data:
-            supabase.table("profiles").update({"coins": new_balance}).eq("email", order.user_email).execute()
+        if profile.data:
+            supabase.table("profiles").update({"coins": current_coins + coins}).eq("email", order.user_email).execute()
         else:
-            supabase.table("profiles").insert({"email": order.user_email, "coins": new_balance}).execute()
+            supabase.table("profiles").insert({"email": order.user_email, "coins": coins}).execute()
 
-        return {"message": f"Order placed! You earned {coins_earned} Coins! 🪙"}
-
+        return {"message": f"Order Placed! Earned {coins} Coins!"}
     except Exception as e:
-        print(f"Order Error: {e}")
-        if "Out of Stock" in str(e):
-             raise e
+        if "Out of Stock" in str(e): raise e
         return {"error": str(e)}
 
-# --- 7. ADMIN SYSTEM ---
-@app.get("/admin/all_orders")
-def get_all_orders():
-    try:
-        orders_response = supabase.table("orders").select("*").order("created_at", desc=True).execute()
-        orders = orders_response.data
-        
-        for order in orders:
-            user_email = order['user_email']
-            user_response = supabase.table("users").select("address, phone").eq("email", user_email).execute()
-            
-            if user_response.data:
-                order['address'] = user_response.data[0]['address']
-                order['phone'] = user_response.data[0]['phone']
-            else:
-                order['address'] = "Not Found"
-                order['phone'] = "Not Found"
-                
-        return orders
-    except Exception as e:
-        print(f"Admin Error: {e}")
-        return []
-
+# --- 7. ORDER HISTORY (THIS WAS MISSING!) ---
 @app.get("/my_orders/{email}")
 def get_my_orders(email: str):
     try:
-        # Fetch orders for this specific email, newest first
+        # Fetch orders, newest first
         response = supabase.table("orders").select("*").eq("user_email", email).order("created_at", desc=True).execute()
         return response.data
     except Exception as e:
         print(f"Error fetching orders: {e}")
         return []
-# --- 8. WISHLIST SYSTEM ---
-@app.post("/add_wishlist")
-def add_wishlist(item: WishlistItem):
-    try:
-        exists = supabase.table("wishlist").select("*").eq("user_email", item.user_email).eq("product_name", item.product_name).execute()
-        if exists.data:
-            return {"message": "Already in wishlist"}
-            
-        supabase.table("wishlist").insert({
-            "user_email": item.user_email,
-            "product_name": item.product_name,
-            "image_url": item.image_url,
-            "price": item.price
-        }).execute()
-        return {"message": "Added to Wishlist"}
-    except Exception as e:
-        return {"error": str(e)}
 
-@app.get("/get_wishlist/{email}")
-def get_wishlist(email: str):
+# --- 8. ADMIN ---
+@app.get("/admin/all_orders")
+def get_all_orders():
     try:
-        response = supabase.table("wishlist").select("*").eq("user_email", email).execute()
-        return response.data
-    except Exception as e:
-        return []
+        orders = supabase.table("orders").select("*").order("created_at", desc=True).execute().data
+        for order in orders:
+            user = supabase.table("users").select("address, phone").eq("email", order['user_email']).execute()
+            if user.data:
+                order['address'] = user.data[0]['address']
+                order['phone'] = user.data[0]['phone']
+            else:
+                order['address'] = "Not Found"
+                order['phone'] = "Not Found"
+        return orders
+    except: return []
 
-@app.delete("/remove_wishlist")
-def remove_wishlist(email: str, product_name: str):
-    try:
-        supabase.table("wishlist").delete().eq("user_email", email).eq("product_name", product_name).execute()
-        return {"message": "Removed"}
-    except Exception as e:
-        return {"error": str(e)}
-
-# --- 9. VISUAL SEARCH AI ---
+# --- 9. VISUAL AI ---
 @app.post("/visual_search")
 async def visual_search(file: UploadFile = File(...)):
     try:
         contents = await file.read()
-        image = Image.open(io.BytesIO(contents)).convert('RGB')
-        image = image.resize((100, 100))
-        img_array = np.array(image)
+        image = Image.open(io.BytesIO(contents)).convert('RGB').resize((100, 100))
+        r, g, b = np.average(np.average(np.array(image), axis=0), axis=0)
         
-        avg_color_per_row = np.average(img_array, axis=0)
-        avg_color = np.average(avg_color_per_row, axis=0)
-        r, g, b = avg_color
-        
-        detected_item = "Unknown"
-        confidence = 0.0
-        
-        if r > g + 20 and r > b + 20:
-            detected_item = "Fresh Tomato"
-            confidence = 92.5
-        elif g > r + 10 and g > b + 10:
-            detected_item = "Spinach (Palak)"
-            confidence = 88.3
-        elif r > 150 and g > 150 and b < 100:
-            detected_item = "Banana"
-            confidence = 95.1
-        elif r > 180 and g > 160 and b > 140:
-            detected_item = "Potato"
-            confidence = 85.0
+        item, conf = "Unknown", 0.0
+        if r > g+20 and r > b+20: item, conf = "Fresh Tomato", 92.5
+        elif g > r+10 and g > b+10: item, conf = "Spinach (Palak)", 88.3
+        elif r > 150 and g > 150 and b < 100: item, conf = "Banana", 95.1
+        elif r > 180 and g > 160 and b > 140: item, conf = "Potato", 85.0
             
-        return {
-            "detected": detected_item, 
-            "confidence": f"{confidence}%",
-            "message": f"AI analyzed RGB: ({int(r)}, {int(g)}, {int(b)})"
-        }
+        return {"detected": item, "confidence": f"{conf}%"}
+    except Exception as e: return {"error": str(e)}
 
-    except Exception as e:
-        return {"error": str(e)}
-
-# --- 10. VAISHNAV AI CHATBOT ---
+# --- 10. CHATBOT ---
 @app.post("/chat")
 def ai_chat(query: ChatQuery):
     q = query.text.lower()
-    
-    if "hello" in q or "hi" in q:
-        return {"response": "Hello! I am Vaishnav AI 🤖. Ask me about products or delivery!"}
-    
-    if "delivery" in q or "time" in q:
-        return {"response": "We deliver in 30-45 minutes! 🚀"}
-    if "return" in q or "refund" in q:
-        return {"response": "You can return damaged items within 24 hours."}
+    if "hello" in q: return {"response": "Hello! I am Vaishnav AI 🤖."}
+    if "delivery" in q: return {"response": "We deliver in 30-45 minutes! 🚀"}
     
     try:
-        words = q.split()
-        for word in words:
+        for word in q.split():
             if len(word) > 3:
-                response = supabase.table("products").select("*").ilike("name", f"%{word}%").execute()
-                if response.data:
-                    item = response.data[0]
-                    return {"response": f"Yes! We have {item['name']} in stock for ₹{item['price']}. 🛍️"}
-        
-        return {"response": "I couldn't find that item specifically, but we are adding new stock daily!"}
-        
-    except Exception as e:
-        return {"response": "I am having trouble connecting to the brain right now. 😵"}
+                res = supabase.table("products").select("*").ilike("name", f"%{word}%").execute()
+                if res.data: return {"response": f"Yes! We have {res.data[0]['name']} for ₹{res.data[0]['price']}."}
+        return {"response": "I couldn't find that item."}
+    except: return {"response": "AI Brain Error."}
