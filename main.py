@@ -10,8 +10,9 @@ import io
 app = FastAPI()
 
 # --- 1. CONFIGURATION ---
-url: str = "https://eopamdsepyvaglxpifji.supabase.co"
-key: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvcGFtZHNlcHl2YWdseHBpZmppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg0NTk2NDcsImV4cCI6MjA4NDAzNTY0N30.4sStNUyBDOc6MrzTFMIg9eny4cb6ndVF6aOqecjUtXM"
+# ⚠️ PASTE YOUR SUPABASE KEYS HERE AGAIN!
+url: str = "YOUR_SUPABASE_URL_HERE"
+key: str = "YOUR_SUPABASE_ANON_KEY_HERE"
 supabase: Client = create_client(url, key)
 
 app.add_middleware(
@@ -32,6 +33,7 @@ class Order(BaseModel):
     total_price: float
     items: list
     payment_id: Optional[str] = None
+    payment_mode: str = "Online" # <--- NEW FIELD
 
 class ProfileUpdate(BaseModel):
     email: str
@@ -54,17 +56,13 @@ def home():
 
 @app.get("/products")
 def get_products():
-    try:
-        return supabase.table("products").select("*").execute().data
-    except:
-        return []
+    try: return supabase.table("products").select("*").execute().data
+    except: return []
 
 @app.get("/banners")
 def get_banners():
-    try:
-        return supabase.table("banners").select("*").eq("is_active", "true").execute().data
-    except:
-        return []
+    try: return supabase.table("banners").select("*").eq("is_active", "true").execute().data
+    except: return []
 
 # --- 4. AUTH & PROFILE ---
 @app.post("/signup")
@@ -115,8 +113,7 @@ def add_wishlist(item: WishlistItem):
 
 @app.get("/get_wishlist/{email}")
 def get_wishlist(email: str):
-    try:
-        return supabase.table("wishlist").select("*").eq("user_email", email).execute().data
+    try: return supabase.table("wishlist").select("*").eq("user_email", email).execute().data
     except: return []
 
 @app.delete("/remove_wishlist")
@@ -126,7 +123,7 @@ def remove_wishlist(email: str, product_name: str):
         return {"message": "Removed"}
     except: return {"error": "Failed"}
 
-# --- 6. ORDER PLACEMENT ---
+# --- 6. ORDER PLACEMENT (UPDATED FOR COD) ---
 @app.post("/place_order")
 def place_order(order: Order):
     try:
@@ -136,13 +133,14 @@ def place_order(order: Order):
             if prod.data and prod.data[0]['stock_quantity'] <= 0:
                 raise HTTPException(status_code=400, detail=f"{item['name']} is Out of Stock!")
 
-        # Save Order
+        # Save Order with Payment Mode
         supabase.table("orders").insert({
             "user_email": order.user_email,
             "total_price": order.total_price,
             "items": order.items,
             "payment_id": order.payment_id,
-            "status": "Pending"
+            "status": "Pending",
+            "payment_mode": order.payment_mode # <--- SAVING COD or ONLINE
         }).execute()
 
         # Update Stock
@@ -162,16 +160,15 @@ def place_order(order: Order):
         else:
             supabase.table("profiles").insert({"email": order.user_email, "coins": coins}).execute()
 
-        return {"message": f"Order Placed! Earned {coins} Coins!"}
+        return {"message": f"Order Placed! Earned {coins} Coins! 🪙"}
     except Exception as e:
         if "Out of Stock" in str(e): raise e
         return {"error": str(e)}
 
-# --- 7. ORDER HISTORY (THIS WAS MISSING!) ---
+# --- 7. ORDER HISTORY ---
 @app.get("/my_orders/{email}")
 def get_my_orders(email: str):
     try:
-        # Fetch orders, newest first
         response = supabase.table("orders").select("*").eq("user_email", email).order("created_at", desc=True).execute()
         return response.data
     except Exception as e:
