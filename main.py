@@ -203,6 +203,15 @@ def get_all_orders():
         print(f"Admin Error: {e}")
         return []
 
+@app.get("/my_orders/{email}")
+def get_my_orders(email: str):
+    try:
+        # Fetch orders for this specific email, newest first
+        response = supabase.table("orders").select("*").eq("user_email", email).order("created_at", desc=True).execute()
+        return response.data
+    except Exception as e:
+        print(f"Error fetching orders: {e}")
+        return []
 # --- 8. WISHLIST SYSTEM ---
 @app.post("/add_wishlist")
 def add_wishlist(item: WishlistItem):
